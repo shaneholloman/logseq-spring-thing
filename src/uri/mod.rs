@@ -19,6 +19,10 @@
 //!       content-addressed, **unscoped** — owner travels in `owner_did`.
 //!   * `urn:visionclaw:group:<team>#members`
 //!       team-scoped.
+//!   * `urn:visionclaw:room:<sha256-12>`
+//!       content-addressed, unscoped — an XR presence room (DDD-XR §7.2).
+//!   * `urn:visionclaw:avatar:<hex-pubkey>`
+//!       identity-bound 1:1 with the avatar's DID (DDD-XR §7.2).
 //!   * identity is `did:nostr:<hex-pubkey>` — there is **no** `urn:visionclaw:agent`
 //!     kind; an agent's identity *is* its DID.
 //!
@@ -54,6 +58,10 @@ pub enum Kind {
     Execution,
     /// `group:<team>#members` — team-scoped.
     Group,
+    /// `room:<sha256-12>` — content-addressed, unscoped XR presence room.
+    Room,
+    /// `avatar:<hex-pubkey>` — identity-bound 1:1 with the avatar's DID.
+    Avatar,
 }
 
 impl Kind {
@@ -65,6 +73,8 @@ impl Kind {
             Kind::Bead => "bead",
             Kind::Execution => "execution",
             Kind::Group => "group",
+            Kind::Room => "room",
+            Kind::Avatar => "avatar",
         }
     }
 
@@ -75,6 +85,8 @@ impl Kind {
             "bead" => Kind::Bead,
             "execution" => Kind::Execution,
             "group" => Kind::Group,
+            "room" => Kind::Room,
+            "avatar" => Kind::Avatar,
             _ => return None,
         })
     }
@@ -235,10 +247,24 @@ pub fn group_members(team: &str) -> Result<String, UriError> {
     Ok(format!("{NS}:{}:{t}#members", Kind::Group))
 }
 
+/// Mint `urn:visionclaw:room:<sha256-12>` (unscoped XR presence room) from raw
+/// room-defining content (e.g. the room descriptor).
+pub fn room(content: impl AsRef<[u8]>) -> String {
+    format!("{NS}:{}:{}", Kind::Room, content_address(content))
+}
+
+/// Mint `urn:visionclaw:avatar:<hex-pubkey>` — bound 1:1 with the avatar's DID.
+pub fn avatar(pubkey: &str) -> Result<String, UriError> {
+    if !is_pubkey_hex(pubkey) {
+        return Err(UriError::InvalidPubkey(pubkey.to_string()));
+    }
+    Ok(format!("{NS}:{}:{pubkey}", Kind::Avatar))
+}
+
 // ── Parsing (round-trip + BC20 ingest) ───────────────────────────────────────
 
 /// A parsed converged identifier. `did:nostr` is represented as
-/// [`ParsedUri::DidNostr`]; the five URN kinds carry their structural fields so
+/// [`ParsedUri::DidNostr`]; the URN kinds carry their structural fields so
 /// the ingest path can record a namespace-crossing rather than store an opaque
 /// blob.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,10 +281,14 @@ pub enum ParsedUri {
     Execution { address: String },
     /// `group:<team>#members`.
     Group { team: String },
+    /// `room:<sha256-12>` (unscoped XR presence room).
+    Room { address: String },
+    /// `avatar:<hex-pubkey>` (identity-bound).
+    Avatar { pubkey: String },
 }
 
 impl ParsedUri {
-    /// The kind, if this is one of the five `urn:visionclaw` URN kinds
+    /// The kind, if this is one of the `urn:visionclaw` URN kinds
     /// (identity has no `Kind`).
     pub fn kind(&self) -> Option<Kind> {
         Some(match self {
@@ -268,6 +298,8 @@ impl ParsedUri {
             ParsedUri::Bead { .. } => Kind::Bead,
             ParsedUri::Execution { .. } => Kind::Execution,
             ParsedUri::Group { .. } => Kind::Group,
+            ParsedUri::Room { .. } => Kind::Room,
+            ParsedUri::Avatar { .. } => Kind::Avatar,
         })
     }
 
@@ -276,7 +308,8 @@ impl ParsedUri {
         match self {
             ParsedUri::DidNostr { pubkey }
             | ParsedUri::Kg { pubkey, .. }
-            | ParsedUri::Bead { pubkey, .. } => Some(pubkey),
+            | ParsedUri::Bead { pubkey, .. }
+            | ParsedUri::Avatar { pubkey } => Some(pubkey),
             _ => None,
         }
     }
@@ -292,6 +325,8 @@ impl ParsedUri {
             ParsedUri::Bead { pubkey, address } => format!("{NS}:{}:{pubkey}:{address}", Kind::Bead),
             ParsedUri::Execution { address } => format!("{NS}:{}:{address}", Kind::Execution),
             ParsedUri::Group { team } => format!("{NS}:{}:{team}#members", Kind::Group),
+            ParsedUri::Room { address } => format!("{NS}:{}:{address}", Kind::Room),
+            ParsedUri::Avatar { pubkey } => format!("{NS}:{}:{pubkey}", Kind::Avatar),
         }
     }
 }
@@ -373,6 +408,22 @@ pub fn parse(input: &str) -> Result<ParsedUri, UriError> {
             }
             Ok(ParsedUri::Group {
                 team: team.to_string(),
+            })
+        }
+        Kind::Room => {
+            if !tail.starts_with(CONTENT_ADDR_PREFIX) || tail.contains(':') {
+                return Err(UriError::Malformed(input.to_string()));
+            }
+            Ok(ParsedUri::Room {
+                address: tail.to_string(),
+            })
+        }
+        Kind::Avatar => {
+            if !is_pubkey_hex(tail) {
+                return Err(UriError::InvalidPubkey(tail.to_string()));
+            }
+            Ok(ParsedUri::Avatar {
+                pubkey: tail.to_string(),
             })
         }
     }
@@ -562,6 +613,33 @@ mod tests {
         assert_eq!(p, ParsedUri::Group { team: "dream-lab".into() });
         assert_eq!(p.to_uri(), id);
         assert!(group_members("   ").is_err());
+    }
+
+    #[test]
+    fn room_shape_and_roundtrip() {
+        let id = room(b"room-descriptor");
+        assert!(id.starts_with("urn:visionclaw:room:sha256-12-"));
+        let p = parse(&id).unwrap();
+        assert_eq!(p.kind(), Some(Kind::Room));
+        assert_eq!(p.owner_pubkey(), None);
+        assert_eq!(p.to_uri(), id);
+        // deterministic on content
+        assert_eq!(id, room(b"room-descriptor"));
+        // a stray scope segment must be rejected.
+        assert!(parse("urn:visionclaw:room:sha256-12-deadbeef0011:extra").is_err());
+    }
+
+    #[test]
+    fn avatar_shape_and_roundtrip() {
+        let id = avatar(PK_A).unwrap();
+        assert_eq!(id, format!("urn:visionclaw:avatar:{PK_A}"));
+        let p = parse(&id).unwrap();
+        assert_eq!(p, ParsedUri::Avatar { pubkey: PK_A.into() });
+        assert_eq!(p.kind(), Some(Kind::Avatar));
+        assert_eq!(p.owner_pubkey(), Some(PK_A));
+        assert_eq!(p.to_uri(), id);
+        assert!(avatar("nope").is_err());
+        assert!(parse(&format!("urn:visionclaw:avatar:{}", PK_A.to_uppercase())).is_err());
     }
 
     #[test]

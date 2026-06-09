@@ -6,7 +6,6 @@
 
 pub mod agent_messages;
 pub mod analytics_messages;
-pub mod broadcast_messages;
 pub mod client_messages;
 pub mod graph_messages;
 pub mod ontology_messages;
@@ -118,10 +117,3 @@ pub use agent_messages::{
     SetAgentMonitorAddr, TaskStatusChanged,
 };
 
-// --- broadcast_messages (Phase 3) ---
-pub use broadcast_messages::{
-    BroadcastActorStatus, BroadcastState, BroadcastTick, ClientId as BroadcastClientId,
-    GetBroadcastActorStatus, OnLayoutDestabilised, OnLayoutSettled, OnLayoutStarted,
-    OnPhysicsClamped, RegisterBroadcastClient, ShutdownBroadcastActor, TriggerHeartbeat,
-    UnregisterBroadcastClient,
-};

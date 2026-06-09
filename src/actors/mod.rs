@@ -2,7 +2,6 @@
 
 pub mod agent_beam_actor;
 pub mod agent_monitor_actor;
-pub mod broadcast_actor;
 pub mod client_coordinator_actor;
 pub mod client_filter;
 pub mod gpu;
@@ -50,7 +49,6 @@ pub mod presence_actor;
 
 pub use agent_beam_actor::AgentBeamActor;
 pub use agent_monitor_actor::AgentMonitorActor;
-pub use broadcast_actor::{BroadcastActor, BroadcastConfig};
 pub use client_coordinator_actor::{
     ClientCoordinatorActor, ClientCoordinatorStats, ClientManager, ClientState,
 };

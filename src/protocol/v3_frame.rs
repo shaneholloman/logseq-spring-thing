@@ -128,7 +128,7 @@ impl BinaryV3Frame {
     }
 
     /// Encode directly from a slice of `NodeRow` without owning a `Vec`.
-    /// Hot path for `BroadcastActor`: snapshot → bytes with one allocation.
+    /// Hot path for position broadcasting: snapshot → bytes with one allocation.
     pub fn encode_slice(frame_id: u32, nodes: &[NodeRow], buf: &mut Vec<u8>) {
         let total = V3_HEADER_BYTES + nodes.len() * V3_NODE_BYTES + V3_TRAILER_BYTES;
         buf.clear();

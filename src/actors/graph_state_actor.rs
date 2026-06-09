@@ -91,7 +91,7 @@ pub struct GraphStateActor {
     compact_to_persistent: Vec<u32>,
 
     /// Phase 3 (ADR-02 D4): canonical position snapshot. Updated atomically on
-    /// every `UpdateNodePositions` apply. Read by `BroadcastActor` and the
+    /// every `UpdateNodePositions` apply. Read by the
     /// `GET /api/graph/positions` REST handler — the single source of truth
     /// for "what positions does the client see right now".
     position_snapshot: Arc<crate::actors::messages::PositionFrameSnapshot>,
