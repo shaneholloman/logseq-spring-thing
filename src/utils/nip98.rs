@@ -181,6 +181,8 @@ pub enum Nip98ValidationError {
     InvalidKind(u16),
     #[error("Token expired: created {0}s ago (max {TOKEN_MAX_AGE_SECONDS}s). Please check your system clock is synchronized.")]
     TokenExpired(i64),
+    #[error("Token from the future: created {0}s ahead (tolerance {TOKEN_MAX_AGE_SECONDS}s). Please check your system clock is synchronized.")]
+    TokenFromFuture(i64),
     #[error("Missing required tag: {0}")]
     MissingTag(String),
     #[error("URL mismatch: expected {expected}, got {actual}")]
@@ -226,7 +228,10 @@ pub fn validate_nip98_token(
         return Err(Nip98ValidationError::InvalidKind(nip98_event.kind));
     }
 
-    // Check timestamp (60 second window)
+    // Check timestamp against a symmetric tolerance window. The token's
+    // `created_at` must fall within ±TOKEN_MAX_AGE_SECONDS of the server clock:
+    // too far in the past is a stale/replayed token, too far in the future is a
+    // forged or clock-skewed token. Matching the forum verifier's abs_diff gate.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock is before UNIX epoch")
@@ -234,12 +239,13 @@ pub fn validate_nip98_token(
     let age = now - nip98_event.created_at;
 
     if age > TOKEN_MAX_AGE_SECONDS {
+        // created_at is too far in the past — stale or replayed.
         return Err(Nip98ValidationError::TokenExpired(age));
     }
 
-    // Also reject tokens from the future (clock skew protection)
     if age < -TOKEN_MAX_AGE_SECONDS {
-        return Err(Nip98ValidationError::TokenExpired(age));
+        // created_at is too far in the future — forged or badly skewed clock.
+        return Err(Nip98ValidationError::TokenFromFuture(-age));
     }
 
     // Extract and validate tags
@@ -632,5 +638,87 @@ mod tests {
     fn test_validate_nip98_token_invalid_base64() {
         let result = validate_nip98_token("not-valid-base64!!!", "http://test.com", "GET", None);
         assert!(matches!(result, Err(Nip98ValidationError::InvalidBase64)));
+    }
+
+    /// Build a base64-encoded NIP-98 token whose `created_at` is offset from the
+    /// current clock by `offset_secs` (negative = past, positive = future).  The
+    /// event is genuinely signed so it passes signature verification, letting us
+    /// exercise the timestamp window in isolation.
+    fn signed_token_with_offset(
+        keys: &Keys,
+        url: &str,
+        method: &str,
+        offset_secs: i64,
+    ) -> String {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock is before UNIX epoch")
+            .as_secs() as i64
+            + offset_secs;
+
+        let tags: Vec<Tag> = vec![
+            Tag::custom(TagKind::Custom("u".into()), vec![url.to_string()]),
+            Tag::custom(
+                TagKind::Custom("method".into()),
+                vec![method.to_uppercase()],
+            ),
+        ];
+
+        let event = EventBuilder::new(Kind::Custom(HTTP_AUTH_KIND), "")
+            .tags(tags)
+            .custom_created_at(Timestamp::from(created_at as u64))
+            .sign_with_keys(keys)
+            .expect("failed to sign event");
+
+        let nip98_event = Nip98Event {
+            id: event.id.to_hex(),
+            pubkey: event.pubkey.to_hex(),
+            created_at: event.created_at.as_u64() as i64,
+            kind: HTTP_AUTH_KIND,
+            tags: event
+                .tags
+                .iter()
+                .map(|t| t.as_slice().iter().map(|s| s.to_string()).collect())
+                .collect(),
+            content: event.content.clone(),
+            sig: event.sig.to_string(),
+        };
+
+        let json = serde_json::to_string(&nip98_event).expect("serialize");
+        BASE64.encode(json.as_bytes())
+    }
+
+    #[test]
+    fn test_validate_nip98_token_future_dated_rejected() {
+        // A token created well beyond the future tolerance window must be
+        // rejected. This guards against forged or clock-skewed tokens that an
+        // earlier one-sided age check would have silently accepted.
+        let keys = Keys::generate();
+        let url = "http://localhost:3030/pods/test/";
+        let method = "GET";
+
+        let token = signed_token_with_offset(&keys, url, method, TOKEN_MAX_AGE_SECONDS + 120);
+        let result = validate_nip98_token(&token, url, method, None);
+
+        assert!(
+            matches!(result, Err(Nip98ValidationError::TokenFromFuture(_))),
+            "expected TokenFromFuture, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_validate_nip98_token_within_future_tolerance_accepted() {
+        // A token a few seconds in the future (within tolerance) is legitimate
+        // clock skew and must still validate, confirming the window is symmetric
+        // rather than simply rejecting all future timestamps.
+        let keys = Keys::generate();
+        let url = "http://localhost:3030/pods/test/";
+        let method = "GET";
+
+        let token = signed_token_with_offset(&keys, url, method, TOKEN_MAX_AGE_SECONDS / 2);
+        let result = validate_nip98_token(&token, url, method, None);
+
+        assert!(result.is_ok(), "validation failed: {:?}", result.err());
     }
 }
