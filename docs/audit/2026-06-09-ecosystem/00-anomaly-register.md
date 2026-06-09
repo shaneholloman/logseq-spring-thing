@@ -66,7 +66,7 @@ mindmap
 |---|---|---|---|
 | NIP-98 ×3 (pod `auth/nip98.rs`, forum `nip98.rs`, VC `utils/nip98.rs`) | n/a — all live | Shared crate (`nostr-auth-kit`), forum impl as seed (only one with replay cache) | **Reconcile**; interim: patch VC age check |
 | pubkey-hex ×6 | n/a | One cased validator promoted; lowercase-only is the URN-layer law | **Reconcile** (follow-on) |
-| URN tri-grammar (`urn:agentbox` / `urn:visionclaw` / legacy `urn:ngm` 20 refs on VC main) | Legacy `urn:ngm` refs are revert candidates post-migration | BC20 is the sanctioned bridge; extend to `bead` | **Both**: extend BC20 now, retire `urn:ngm` as migration completes |
+| URN tri-grammar (`urn:agentbox` / `urn:visionclaw` / `urn:ngm`) | — | BC20 is the sanctioned bridge; extend to `bead` | BC20/`bead`: **Reconcile**. `urn:ngm`: **Neither** — corrected to internal RDF graph vocabulary, orthogonal to the entity grammar (see Reconciliation Note → Finding 2). Not a legacy alias; not a revert candidate. |
 | Forum↔pod NIP-98 parallel impls | — | — | **Neither**: intentional wasm32 platform split, documented (pod `Cargo.toml:121`) |
 | VC CQRS bus (87 handlers, 0 callers) | Delete bus | Wire bus | Out of sprint scope; register only (already known from 05-28 audit) |
 
@@ -122,7 +122,7 @@ All fixers complete. Per repo (all commits on `main`, none pushed):
 2. **R-10**: tag solid-pod-rs `b81ce9f` as a real version; repin forum off registry `alpha.15`.
 3. **R-15 residue**: aci-shell URN delegation to `uris.js` is NOT one-line — `uris.mint()` makes `activity` content-addressed while code-as-harness documents readable `aci-<verb>-<id>` locals; needs an ADR-013 addendum decision first. Same tension exists in voyager `_emit_activity`. Pubkey-hex case unification (6 sites → 1 cased validator) also pending.
 4. **A-004**: Prometheus counter for BC20 drops (stderr-only today).
-5. **VC CQRS bus** (87 handlers, 0 callers): delete-or-wire decision.
+5. ~~**VC CQRS bus** (87 handlers, 0 callers): delete-or-wire decision.~~ **WITHDRAWN** — the "0 callers" premise was false; handlers are dispatched at live routes/actors across every domain. See Reconciliation Note → Finding 1.
 6. **xr-presence validators**: `RoomId`/`AvatarId` accept uppercase hex; converge on the lowercase-only URN-layer law once XR in-flight work lands (do not touch while in flight).
 
 ### Operator actions (cannot be performed by agents)
@@ -131,3 +131,98 @@ All fixers complete. Per repo (all commits on `main`, none pushed):
 - R-09: provision the real admin KV namespace ID + `PRF_SERVER_SECRET` in Cloudflare.
 - R-14: move ruvector-postgres from bare `docker run` into the compose project.
 - R-11: after reviewing this sprint, push all five repos (nothing was pushed).
+
+## Reconciliation Note — CQRS bus & `urn:ngm` (2026-06-09, dedicated fixer)
+
+A dedicated fixer session was tasked with executing the two deferred items
+(follow-on #5 "delete the CQRS bus" and the Revert-vs-Reconcile `urn:ngm`
+retirement, verdict "Both: retire as migration completes"). On exhaustive
+verification **both items were found non-actionable as deletions/migrations**.
+No code was changed; the verdicts are corrected here with evidence.
+
+### Finding 1 — the CQRS application layer is NOT dead (audit "0 callers" was wrong)
+
+The prior audits' "CQRS bus, 87 handlers, 0 callers" anomaly does not survive a
+caller trace. There is no separate command/query *bus* object — the layer is
+hexser `Directive`/`Query` handlers under `src/application/`, instantiated and
+dispatched via `.handle(...)` at **live HTTP route handlers and actors** across
+every domain:
+
+| Domain | Live dispatch site (evidence) |
+|---|---|
+| graph (queries) | `src/handlers/api_handler/graph/mod.rs:156-163` (`get_graph_data/get_node_map/get_physics_state` → `.handle()`), `:299`, `:384`, `:527-528`; wired in `src/app_state.rs:683-698` (`GraphQueryHandlers`), consumed via `state.graph_query_handlers.*` |
+| graph (shortest paths) | `src/actors/graph_state_actor.rs:1182`, `src/actors/semantic_processor_actor.rs:1765`, `src/handlers/semantic_handler.rs:182` |
+| knowledge_graph | `src/handlers/graph_state_handler.rs:86-402` — `LoadGraph/AddNode/UpdateNode/RemoveNode/GetNode/AddEdge/UpdateEdge/BatchUpdatePositions/GetGraphStatistics` each `Handler::new(...).handle(...)` |
+| ontology | `src/handlers/ontology_handler.rs` (20 `.handle()` dispatches), `src/handlers/api_handler/ontology/mod.rs:1026-1029` (`ListOwlClassesHandler.handle()`) |
+| settings | `src/handlers/api_handler/mod.rs:39-42` (`LoadAllSettingsHandler::new(...).handle()`) |
+| physics | `src/application/physics_service::PhysicsService` consumed by `src/handlers/physics_handler.rs:15`, `src/actors/event_coordination.rs:11` |
+
+The actor message-passing path and the CQRS handler path **coexist by design**:
+actors own the live simulation/broadcast loop; the hexser handlers are the
+read/write façade the REST surface dispatches through (`execute_in_thread(move ||
+handler.handle(...))`). The "0 callers" claim likely came from grepping for a
+`CommandBus`/`QueryBus`/`dispatch` symbol that was never the chosen pattern —
+there is no bus, so the symbol search returned empty and was misread as "no
+callers". **Disposition: do NOT delete. Follow-on #5 is withdrawn.** The 88d2763db
+BroadcastActor precedent does not apply — that actor had zero `::new()` sites;
+these handlers have dozens of `.handle()` sites. If a leaner façade is wanted
+later, it is a refactor (collapse handler-per-query into the services), not a
+deletion, and must be driven by its own ADR.
+
+### Finding 2 — every `urn:ngm` reference is load-bearing RDF vocabulary, not a migratable entity URN
+
+The Revert-vs-Reconcile row scoped "~20 refs on VC main". That count was
+`src/*.rs` only. The actual footprint spans two workspace crates and is the
+**internal RDF named-graph + IRI vocabulary of the Oxigraph triplestore**, not a
+set of stray legacy entity ids:
+
+- Named-graph IRIs as typed constants (read+write, SPARQL `FROM`/`GRAPH`):
+  `crates/visionclaw-adapters/src/oxigraph_ontology_repository.rs:46-53`
+  (`GRAPH_ONTOLOGY`, `GRAPH_ONTOLOGY_INFERRED`, `GRAPH_KNOWLEDGE`, `GRAPH_AGENT`,
+  `GRAPH_CACHE_SSSP`, `GRAPH_CACHE_APSP`),
+  `crates/visionclaw-adapters/src/sparql_migrations.rs:44` (`GRAPH_MIGRATIONS`,
+  ADR-101 D2), `crates/visionclaw-ontology/src/services/jsonld_ingest/triple_emitter.rs:50-53`.
+- IRI minters for OWL class/property/axiom subjects (content-addressed for axioms):
+  `oxigraph_ontology_repository.rs:106,116,132,1114,1135,1992,2399,2441`.
+- Node/edge IRI minters + their read-side `STRSTARTS`/`strip_prefix` tolerance
+  (round-trips persisted RDF subjects to `NodeId`):
+  `src/adapters/oxigraph_graph_repository.rs:90,100,296,327,347,1016,1500`.
+- Domain-root OWL class IRI mint + read tolerance:
+  `src/services/github_sync_service.rs:664,1472`.
+- JSON-LD `@id` scheme registry that **classifies `urn:ngm:` as a recognised
+  IRI scheme** (`Graph`/`OwlClass`/`OwlProperty`/`Axiom`):
+  `crates/visionclaw-ontology/src/services/jsonld_validator/iri.rs:107-113`;
+  and the ingest validator that **explicitly accepts it as the *current* scheme**:
+  `crates/visionclaw-ontology/src/services/jsonld_ingest/validator.rs:43,68-70`
+  ("Accepts both legacy `urn:visionclaw:owl:class:` and **new** `urn:ngm:class:`").
+
+The last point is decisive: in the ontology subsystem `urn:ngm:` is the **newer**
+scheme and `urn:visionclaw:owl:class:` is the one being retired — so "migrating
+`urn:ngm:` → `urn:visionclaw:`" would run the migration backwards.
+
+There is also **no migration target** in the converged grammar. `src/uri/mod.rs`
+`Kind` covers `concept/kg/bead/execution/group/room/avatar` — the
+federation/entity-identity layer. It has no `node`, `edge`, `domain`, `graph`,
+`class`, `property`, or `axiom` kind, because those are triplestore-internal RDF
+IRIs, a disjoint concern. The two schemes are orthogonal by design, and the
+parser's own negative tests assert the boundary:
+`src/uri/mod.rs:647` (`parse("urn:ngm:node:42")` → `Err(NotVisionclaw)`),
+`src/uri/mod.rs:682` (`cross_from_agentbox("urn:ngm:node:1")` → `None`). Those
+tests are correct and must stay.
+
+**Disposition: leave all `urn:ngm` references in place.** Read-side tolerance is
+already present everywhere persisted data is loaded (`strip_prefix`/`STRSTARTS`/
+the `iri.rs` scheme registry), so existing stored graphs deserialise correctly;
+there is no write-side change to make because the write side already emits the
+current internal vocabulary. The Revert-vs-Reconcile verdict is corrected from
+"Both: retire `urn:ngm` as migration completes" to **"Neither — `urn:ngm:` is the
+internal RDF graph vocabulary, orthogonal to the `urn:visionclaw:` entity grammar;
+not a legacy alias of it."** If a true single-scheme convergence is ever wanted,
+it is an ADR-scale data-migration project (rename every named graph + re-IRI every
+stored subject + dual-read during cutover), not a find-replace, and the inverted
+direction noted above must be resolved first (which of `urn:ngm:class:` vs
+`urn:visionclaw:owl:class:` is canonical).
+
+Both findings supersede follow-on #5 and the `urn:ngm` Revert-vs-Reconcile row.
+Net code change this session: zero (verification-only). Scoped
+`cargo check -p visionclaw-server --features solid-pod-embed` green at HEAD.
