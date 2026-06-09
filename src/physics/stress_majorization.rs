@@ -169,7 +169,31 @@ impl StressMajorizationSolver {
             return Err("Cannot optimize empty graph".into());
         }
 
-        
+        // P1-23: stress majorization allocates two dense n×n f32 matrices (distance +
+        // weight). For large graphs that is O(n²) memory and will OOM the process.
+        // Gate against currently-available RAM (budget = half of free memory) rather
+        // than a fixed node cap, so the ceiling tracks the real graph size and the box.
+        let n = graph_data.nodes.len();
+        let bytes_needed = 2usize
+            .saturating_mul(n)
+            .saturating_mul(n)
+            .saturating_mul(std::mem::size_of::<f32>());
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        let budget = (sys.available_memory() as usize) / 2;
+        if bytes_needed > budget {
+            let needed_mb = bytes_needed / (1024 * 1024);
+            let safe_nodes =
+                ((budget as f64) / (2.0 * std::mem::size_of::<f32>() as f64)).sqrt() as usize;
+            return Err(format!(
+                "Stress majorization needs two dense {n}×{n} matrices (~{needed_mb} MB), \
+                 exceeding the safe memory budget (~{safe_nodes} nodes for current free RAM). \
+                 Use the GPU force-directed layout for graphs this large."
+            )
+            .into());
+        }
+
+
         self.compute_distance_matrix(graph_data)?;
         self.compute_weight_matrix(graph_data)?;
 
