@@ -152,6 +152,8 @@ sha2 = "0.10"
 # (0.29.1); promoted to a direct dep for src/services/nostr_identity_verifier.rs.
 secp256k1 = { version = "0.29", features = ["rand", "global-context"] }
 hex = "0.4"
+# Advisory flock(2) for the HTTP 402 payment ledger/exchange stores (pay_handler).
+libc = "0.2"
 # scopeguard = "1.2"  # Unused - removed during cleanup
 url = "2.5"
 flate2 = "1.0"

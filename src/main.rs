@@ -710,6 +710,27 @@ async fn main() -> std::io::Result<()> {
     #[cfg(feature = "solid-pod-embed")]
     let solid_state = visionclaw_server::handlers::init_solid_state().await;
 
+    // HTTP 402 payments + exchange state (Web Ledgers + AMM). Default-disabled via
+    // PAY_ENABLED=false; ledger and order book persist to PAY_LEDGER_DIR. Built once
+    // here and cloned into each Actix worker via app_data, matching presence/solid.
+    #[cfg(feature = "solid-pod-embed")]
+    let (pay_config_data, pay_ledger_data, pay_exchange_data) = {
+        use visionclaw_server::handlers::pay_handler::{
+            FsExchangeStore, FsPaymentStore, VcPayConfig,
+        };
+        let cfg = VcPayConfig::from_env();
+        let ledger_dir = cfg.ledger_dir.clone();
+        let ledger =
+            Arc::new(FsPaymentStore::new(&ledger_dir).expect("init payment ledger store"));
+        let exchange =
+            Arc::new(FsExchangeStore::new(&ledger_dir).expect("init exchange store"));
+        (
+            web::Data::new(cfg),
+            web::Data::new(ledger),
+            web::Data::new(exchange),
+        )
+    };
+
     info!("main: All services and actors initialized. Configuring HTTP server.");
     let server =
         HttpServer::new(move || {
@@ -828,6 +849,16 @@ async fn main() -> std::io::Result<()> {
             // Inject pre-initialised Solid pod state (avoids async init in worker threads)
             #[cfg(feature = "solid-pod-embed")]
             let app = app.app_data(solid_state.clone());
+
+            // HTTP 402 payment + exchange state and `/pay/*` routes.
+            // Endpoints are inert until PAY_ENABLED=true (`.info` reports disabled,
+            // gated routes return 403), so this is safe to mount unconditionally.
+            #[cfg(feature = "solid-pod-embed")]
+            let app = app
+                .app_data(pay_config_data.clone())
+                .app_data(pay_ledger_data.clone())
+                .app_data(pay_exchange_data.clone())
+                .configure(visionclaw_server::handlers::pay_handler::configure_pay_routes);
 
             let app = app
             // Root-level k8s/Docker probes (the /api/* variants below are kept for back-compat)

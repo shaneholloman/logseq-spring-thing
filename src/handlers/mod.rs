@@ -77,6 +77,12 @@ pub use solid_proxy_handler::init_solid_state;
 pub mod image_gen_handler;
 pub use image_gen_handler::configure_routes as configure_image_gen_routes;
 
+// HTTP 402 payments / exchange (Web Ledgers + AMM) — gated on solid-pod-rs
+#[cfg(feature = "solid-pod-embed")]
+pub mod pay_handler;
+#[cfg(feature = "solid-pod-embed")]
+pub use pay_handler::configure_pay_routes;
+
 // PRD-008: XR presence WebSocket (`/ws/presence`)
 pub mod presence_handler;
 

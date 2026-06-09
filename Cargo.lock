@@ -6902,6 +6902,7 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "lazy_static",
+ "libc",
  "log",
  "lru 0.12.5",
  "mockall",
